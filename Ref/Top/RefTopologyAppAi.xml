@@ -29,6 +29,10 @@
 	<import_component_type>Drv/BlockDriver/BlockDriverComponentAi.xml</import_component_type>
 	<import_component_type>Svc/FileDownlink/FileDownlinkComponentAi.xml</import_component_type>
 	<import_component_type>Svc/PassiveTextLogger/PassiveTextLoggerComponentAi.xml</import_component_type>
+	
+	
+	<import_component_type>Ref/BME280/BME280ComponentAi.xml</import_component_type>
+	<import_component_type>Ref/GPS/GPSComponentAi.xml</import_component_type>
 
    <instance namespace="Svc" name="fatalHandler" type="FatalHandler" base_id="1"  base_id_window="20" />
 
@@ -85,6 +89,10 @@
    <instance namespace="Svc" name="fileDownlink" type="FileDownlink" base_id="501"  base_id_window="20" />
 
    <instance namespace="Svc" name="textLogger" type="PassiveTextLogger" base_id="521"  base_id_window="20" />
+
+	<instance namespace="Ref" name="BmeImpl" type="BME280" base_id="1000"  base_id_window="20" />
+	
+	<instance namespace="Ref" name="GPSImpl" type="GPS" base_id="1100"  base_id_window="20" />
 
 
 <connection name = "Connection1">
@@ -806,5 +814,45 @@
 <connection name = "Connection180">
 	 <source component = "cmdSeq" port = "cmdRegOut" type = "CmdReg" num = "0"/>
  	 <target component = "cmdDisp" port = "compCmdReg" type = "CmdReg" num = "13"/>
+</connection>
+<connection name = "BmeSenderLog">
+	 <source component = "BmeImpl" port = "eventOut" type = "Log" num = "0"/>
+	  <target component = "eventLogger" port = "LogRecv" type = "Log" num = "0"/>
+</connection>
+<connection name = "BmeSenderTextLog">
+	 <source component = "BmeImpl" port = "LogText" type = "LogText" num = "0"/>
+	  <target component = "textLogger" port = "TextLogger" type = "LogText" num = "0"/>
+</connection>
+<connection name = "BmeTxtTlm">
+	 <source component = "BmeImpl" port = "tlmOut" type = "Tlm" num = "0"/>
+	  <target component = "chanTlm" port = "TlmRecv" type = "Tlm" num = "0"/>
+</connection>
+<connection name = "BmeImplParamGet">
+	 <source component = "BmeImpl" port = "ParamGet" type = "PrmGet" num = "0"/>
+	  <target component = "prmDb" port = "getPrm" type = "PrmGet" num = "0"/>
+</connection>
+<connection name = "BmeImplParamSet">
+	 <source component = "BmeImpl" port = "ParamSet" type = "PrmSet" num = "0"/>
+	  <target component = "prmDb" port = "setPrm" type = "PrmSet" num = "0"/>
+</connection>
+<connection name = "BmeImplTime">
+	 <source component = "BmeImpl" port = "Time" type = "Time" num = "0"/>
+	  <target component = "linuxTime" port = "timeGetPort" type = "Time" num = "0"/>
+</connection>
+<connection name = "BmeImplRG">
+	 <source component = "rateGroup1Comp" port = "RateGroupMemberOut" type = "Sched" num = "3"/>
+	 <target component = "BmeImpl" port = "schedIn" type = "Sched" num = "0"/>
+</connection>
+<connection name = "GPSRateGroup">
+	 <source component = "rateGroup3Comp" port = "RateGroupMemberOut" type = "Sched" num = "2"/>
+ 	 <target component = "GPSImpl" port = "schedIn" type = "Sched" num = "0"/>
+</connection>
+<connection name = "GPSTlm">
+	 <source component = "GPSImpl" port = "tlmOut" type = "Tlm" num = "0"/>
+ 	 <target component = "chanTlm" port = "TlmRecv" type = "Tlm" num = "0"/>
+</connection>
+<connection name = "GPSEventOut">
+	 <source component = "GPSImpl" port = "eventOut" type = "Log" num = "0"/>
+ 	 <target component = "eventLogger" port = "LogRecv" type = "Log" num = "0"/>
 </connection>
 </assembly>

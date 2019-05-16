@@ -1,0 +1,27 @@
+<telemetry>
+	<channel id="0" name="GPS_Time" data_type="U32">
+		<comment>
+		UTC Time
+		</comment>
+	</channel>
+	<channel id="1" name="GPS_Latitude" data_type="F32">
+		<comment>
+		GPS Latitude Reading
+		</comment>
+	</channel>
+	<channel id="2" name="GPS_Longitude" data_type="F32">
+		<comment>
+		GPS Longitude Reading
+		</comment>
+	</channel>
+	<channel id="3" name="GPS_Satellites" data_type="U8">
+		<comment>
+		Number of Satellites Acquired
+		</comment>
+	</channel>
+	<channel id="4" name="GPS_Altitude" data_type="F32">
+		<comment>
+		GPS Altitude
+		</comment>
+	</channel>
+</telemetry>

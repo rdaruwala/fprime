@@ -1,0 +1,32 @@
+<events>
+	<event id="0" name="BME280_OpenError" severity="WARNING_HI" format_string = "Unable to open I2C device: %d" >
+		<comment>
+		I2C Open Error
+		</comment>
+		<args>
+			<arg name="device" type="I16">
+				<comment>I2C Device</comment>
+			</arg>          
+		</args>
+	</event>
+	<event id="1" name="BME280_AddressError" severity="WARNING_HI" format_string = "Unable to set I2C address: %d" >
+		<comment>
+		I2C Set Address Error
+		</comment>
+		<args>
+			<arg name="Address" type="U8">
+				<comment>I2C Address</comment>
+			</arg>          
+		</args>
+	</event>
+	<event id="2" name="BME280_I2C_ReadError" severity="WARNING_HI" format_string = "Unable to Read from I2C Register: %d" >
+		<comment>
+		BME280 I2C Read Error
+		</comment>
+		<args>
+			<arg name="Address" type="U8">
+				<comment>I2C Register Address</comment>
+			</arg>          
+		</args>
+	</event>
+</events>

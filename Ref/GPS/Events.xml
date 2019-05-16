@@ -1,0 +1,27 @@
+<events>
+	<event id="0" name="GPS_OpenError" severity="WARNING_HI" format_string = "Unable to open GPS device" >
+		<comment>
+		GPS Serial Open Error
+		</comment>
+	</event>
+	<event id="1" name="GPS_ReadError" severity="WARNING_HI" format_string = "Unable to read GPS device" >
+		<comment>
+		GPS Serial Read Error
+		</comment>
+	</event>
+	<event id="2" name="GPS_ParseError" severity="WARNING_LO" format_string = "Unable to Parse GPS data" >
+		<comment>
+		GPS Parse Issues
+		</comment>
+	</event>
+	<event id="3" name="GPS_LockAcquired" severity="ACTIVITY_HI" format_string = "GPS Lock Acquired" >
+		<comment>
+		GPS Lock Acquired
+		</comment>
+	</event>
+	<event id="4" name="GPS_LockLost" severity="WARNING_HI" format_string = "GPS Lock Lost" >
+		<comment>
+		GPS Lock Lost
+		</comment>
+	</event>
+</events>

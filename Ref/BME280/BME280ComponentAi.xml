@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="../../Autocoders/schema/ISF/component_schema.rng" type="application/xml" schematypens="http://relaxng.org/ns/structure/1.0"?>
+
+<component name="BME280" kind="active" namespace="Ref" modeler="true">
+
+	<import_port_type>Fw/Log/LogPortAi.xml</import_port_type>
+	<import_port_type>Svc/Sched/SchedPortAi.xml</import_port_type>
+	<import_port_type>Fw/Tlm/TlmPortAi.xml</import_port_type>
+	
+	<import_dictionary>Ref/BME280/Telemetry.xml</import_dictionary>
+	<import_dictionary>Ref/BME280/Events.xml</import_dictionary>
+
+	
+	<ports>
+		<port name="eventOut" data_type="Fw::Log"  kind="output" role="LogEvent"    max_number="1">
+		</port>
+		
+		<port name="schedIn" data_type="Svc::Sched"  kind="async_input"    max_number="1">
+		</port>
+
+		<port name="tlmOut" data_type="Fw::Tlm"  kind="output" role="Telemetry"    max_number="1">
+		</port>
+	 </ports>
+	
+	<parameters>
+		<parameter id="0" name="mean_sea_level_pressure" data_type="U16" default="1013" set_opcode="10" save_opcode="11">
+			<comment>
+				Sea level pressure for altitude calibration
+			</comment>
+		</parameter>
+	</parameters>
+
+</component>

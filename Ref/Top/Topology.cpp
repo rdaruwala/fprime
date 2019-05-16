@@ -183,6 +183,18 @@ Svc::FatalHandlerComponentImpl fatalHandler
 #endif
 ;
 
+Ref::BME280ComponentImpl BmeImpl
+#if FW_OBJECT_NAMES == 1
+("BME280")
+#endif
+;
+
+Ref::GPSComponentImpl GPSImpl
+#if FW_OBJECT_NAMES == 1
+("GPS")
+#endif
+;
+
 
 #if FW_OBJECT_REGISTRATION == 1
 
@@ -253,6 +265,9 @@ void constructApp(int port_number, char* hostname) {
 	fatalHandler.init(0);
 	health.init(25,0);
 	pingRcvr.init(10);
+
+    BmeImpl.init(10, 1);
+    GPSImpl.init(10, 1);
     // Connect rate groups to rate group driver
     constructRefArchitecture();
 
@@ -276,6 +291,8 @@ void constructApp(int port_number, char* hostname) {
     prmDb.readParamFile();
     recvBuffComp.loadParameters();
     sendBuffComp.loadParameters();
+    
+    BmeImpl.loadParameters();
 
     // set health ping entries
 
@@ -319,6 +336,9 @@ void constructApp(int port_number, char* hostname) {
 
     // Initialize socket server
     sockGndIf.startSocketTask(100, 10*1024, port_number, hostname, Svc::SocketGndIfImpl::SEND_UDP);
+    
+    BmeImpl.start(0, 99, 10*1024);
+    GPSImpl.start(0, 99, 10*1024);
 
 #if FW_OBJECT_REGISTRATION == 1
     //simpleReg.dump();
@@ -367,6 +387,9 @@ void exitTasks(void) {
     fileUplink.exit();
     fileDownlink.exit();
     cmdSeq.exit();
+    
+    BmeImpl.exit();
+    GPSImpl.exit();
 }
 
 void print_usage() {

@@ -1,0 +1,22 @@
+<telemetry>
+	<channel id="0" name="BME_Pressure" data_type="F32">
+		<comment>
+		Pressure Reading (hPa)
+		</comment>
+	</channel>
+	<channel id="1" name="BME_Temperature" data_type="F32">
+		<comment>
+		Temperature Reading (deg C)
+		</comment>
+	</channel>
+	<channel id="2" name="BME_Humidity" data_type="F32">
+		<comment>
+		Humidity (%)
+		</comment>
+	</channel>
+	<channel id="3" name="BME_Altitude" data_type="F32">
+		<comment>
+		Calculated Altitude (m)
+		</comment>
+	</channel>
+</telemetry>
