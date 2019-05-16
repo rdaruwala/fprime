@@ -1,6 +1,6 @@
 # F Prime: A Flight-Proven, Multi-Platform, Open-Source Flight Software Framework
 
-F Prime (FÊ¹) is a component-driven framework that enables rapid development and deployment of spaceflight and other embedded software applications. Originally developed at the Jet Propulsion Laboratory, F Prime has been successfully deployed on several space applications. It is tailored, but not limited, to small-scale spaceflight systems such as CubeSats, SmallSats, and instruments. 
+F Prime (F') is a component-driven framework that enables rapid development and deployment of spaceflight and other embedded software applications. Originally developed at the Jet Propulsion Laboratory, F Prime has been successfully deployed on several space applications. It is tailored, but not limited, to small-scale spaceflight systems such as CubeSats, SmallSats, and instruments. 
 
 F Prime comprises several elements: 
 
@@ -14,7 +14,7 @@ F Prime has the following key features:
 
 ### Reusability
 
-F Primeâ€™s component-based architecture enables a high degree of modularity and software reuse. 
+F Prime's component-based architecture enables a high degree of modularity and software reuse. 
 
 ### Rapid Deployment
 
