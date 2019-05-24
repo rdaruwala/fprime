@@ -22,6 +22,8 @@
 #include <Ref/GPS/GPSComponentImpl.hpp>
 #include "Fw/Types/BasicTypes.hpp"
 
+#include <cmath>
+
 namespace Ref {
   
   extern "C" {
@@ -90,6 +92,24 @@ namespace Ref {
     this->m_setup = true;
     this->m_lock = false;
   }
+  
+  
+  float GPSComponentImpl ::
+    gps_deg_to_dec(
+        float deg 
+      )
+  {
+    double dub_deg;
+    float second = modf(deg, &dub_deg)*60;
+    int degree = (int)(dub_deg/100);
+    int minute = (int)(deg-(degree*100));
+
+    float absDeg = round(degree * 1000000.);
+    float absMin = round(minute * 1000000.);
+    float absSec = round(second * 1000000.);
+
+    return round(absDeg + (absMin/60) + (absSec/3600)) /1000000;
+  }
 
   // ----------------------------------------------------------------------
   // Handler implementations for user-defined typed input ports
@@ -143,12 +163,10 @@ namespace Ref {
     
     F32 lat, lon;
     
-    lat = (U32)(data.latitude/100.0f);
-    lat = lat + (data.latitude - (lat * 100.0f))/60.0f;
+    lat = gps_deg_to_dec(data.latitude);
     lat = lat * ((data.northSouth == 'N') ? 1 : -1);
     
-    lon = (U32)(data.longitude/100.0f);
-    lon = lon + (data.longitude - (lon * 100.0f))/60.f;
+    lon = gps_deg_to_dec(data.longitude);
     lon = lon * ((data.eastWest == 'E') ? 1 : -1);
     
     tlmWrite_GPS_Time(data.utcTime);

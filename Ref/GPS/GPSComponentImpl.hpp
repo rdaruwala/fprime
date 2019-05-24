@@ -76,6 +76,10 @@ namespace Ref {
       // ----------------------------------------------------------------------
       
       void setup(void);
+      
+      float gps_deg_to_dec(
+            float deg 
+          );
 
       //! Handler implementation for schedIn
       //!

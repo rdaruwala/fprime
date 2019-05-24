@@ -55,6 +55,14 @@ namespace Ref {
   {
 
   }
+  
+  float GPSComponentImpl ::
+    gps_deg_to_dec(
+        float deg 
+      )
+  {
+    return 0;
+  }
 
   // ----------------------------------------------------------------------
   // Handler implementations for user-defined typed input ports
