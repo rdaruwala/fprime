@@ -76,7 +76,12 @@ namespace Svc {
         const NATIVE_INT_TYPE portNum,
         Fw::Buffer &fwBuffer
     )
-  {}
+  {
+    // TODO
+    Fw::Buffer buffer = m_ext_buffer;
+    
+    
+  }
 
   void GroundInterfaceComponentImpl ::
     readCallback_handler(
@@ -165,8 +170,11 @@ namespace Svc {
       while (buffer_offset < buffer.getsize()) {
           NATIVE_UINT_TYPE ser_size = (buffer.getsize() >= m_in_ring.get_remaining_size(true)) ?
               m_in_ring.get_remaining_size(true) : static_cast<NATIVE_UINT_TYPE>(buffer.getsize());
+
           m_in_ring.serialize(reinterpret_cast<U8*>(buffer.getdata()) + buffer_offset, ser_size);
+          
           buffer_offset = buffer_offset + ser_size;
+          
           processRing();
       }
   }

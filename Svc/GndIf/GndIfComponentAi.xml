@@ -1,22 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<?xml-model href="../../Autocoders/Python/schema/ISF/component_schema.rng" type="application/xml" schematypens="http://relaxng.org/ns/structure/1.0"?>
+<?oxygen RNGSchema="file:../xml/ISF_Component_Schema.rnc" type="compact"?>
 
-<component name="GndIf" kind="passive" namespace="Svc" modeler="true">
-
+<component name="GroundInterface" kind="passive" namespace="Svc" modeler="true">
     <import_port_type>Fw/Buffer/BufferSendPortAi.xml</import_port_type>
     <import_port_type>Fw/Log/LogPortAi.xml</import_port_type>
     <import_port_type>Fw/Log/LogTextPortAi.xml</import_port_type>
     <import_port_type>Fw/Com/ComPortAi.xml</import_port_type>
-    <import_port_type>Svc/GndIf/GetConnectedPortAi.xml</import_port_type>
     <import_port_type>Fw/Time/TimePortAi.xml</import_port_type>
     <import_port_type>Fw/Buffer/BufferGetPortAi.xml</import_port_type>
-
+    <import_port_type>Svc/Sched/SchedPortAi.xml</import_port_type>
     <import_dictionary>Svc/GndIf/Events.xml</import_dictionary>
-    <import_dictionary>Svc/GndIf/Commands.xml</import_dictionary>
-
     <ports>
     
-
         <port name="fileUplinkBufferSendOut" data_type="Fw::BufferSend"  kind="output"    max_number="1">
         </port>
 
@@ -27,9 +22,6 @@
         </port>
 
         <port name="downlinkPort" data_type="Fw::Com"  kind="sync_input"    max_number="1">
-        </port>
-
-        <port name="isConnected" data_type="GetConnected"  kind="sync_input"    max_number="1">
         </port>
 
         <port name="Time" data_type="Time"  kind="output" role="TimeGet"    max_number="1">
@@ -46,6 +38,17 @@
 
         <port name="fileUplinkBufferGet" data_type="Fw::BufferGet"  kind="output"    max_number="1">
         </port>
-    </ports>
 
+        <port name="write" data_type="Fw::BufferSend" kind="output" max_number="1">
+        </port>
+
+        <port name="readPoll" data_type="Fw::BufferSend" kind="output" max_number="1">
+        </port>
+
+        <port name="readCallback" data_type="Fw::BufferSend" kind="sync_input" max_number="1">
+        </port>
+
+        <port name="schedIn" data_type="Svc::Sched"  kind="sync_input"    max_number="1">
+        </port>
+    </ports>
 </component>
