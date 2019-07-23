@@ -5,7 +5,7 @@
 # MOD_DEPS: (optional) module dependencies
 #
 ####
-if (${PLATFORM} STREQUAL "RASPIAN")
+if (${CMAKE_SYSTEM_NAME} STREQUAL "arm-linux-gnueabihf")
 	set(SOURCE_FILES
 		"${CMAKE_CURRENT_LIST_DIR}/BME280ComponentAi.xml"
 		"${CMAKE_CURRENT_LIST_DIR}/BME280ComponentImpl.cpp"
@@ -13,7 +13,7 @@ if (${PLATFORM} STREQUAL "RASPIAN")
 else()
 	set(SOURCE_FILES
 		"${CMAKE_CURRENT_LIST_DIR}/BME280ComponentAi.xml"
-		"${CMAKE_CURRENT_LIST_DIR}/BME280ComponentImpl_DEFAULT.cpp"
+		"${CMAKE_CURRENT_LIST_DIR}/BME280ComponentImplStub.cpp"
 	)
 endif()
 

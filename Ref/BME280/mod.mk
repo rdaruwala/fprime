@@ -1,4 +1,4 @@
-SRC = BME280ComponentAi.xml BME280ComponentImpl_DEFAULT.cpp
+SRC = BME280ComponentAi.xml BME280ComponentImplStub.cpp
 
 SRC_RASPIAN = BME280ComponentImpl.cpp
 

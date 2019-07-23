@@ -1,7 +1,7 @@
 // ====================================================================== 
-// \title  GPSImpl.cpp
+// \title  BME280Impl.cpp
 // \author rdaruwala
-// \brief  cpp file for GPS component implementation class
+// \brief  cpp file for BME280 component implementation class
 //
 // \copyright
 // Copyright 2009-2015, by the California Institute of Technology.
@@ -17,63 +17,65 @@
 // countries or providing access to foreign persons.
 // ====================================================================== 
 
-// Acknowledgements to GitHub user LeStarch's GPS Tutorial as it was used as a reference for this class
 
-#include <Ref/GPS/GPSComponentImpl.hpp>
+#include <Ref/BME280/BME280ComponentImpl.hpp>
 #include "Fw/Types/BasicTypes.hpp"
 
 namespace Ref {
+  
 
   // ----------------------------------------------------------------------
   // Construction, initialization, and destruction 
   // ----------------------------------------------------------------------
 
-  GPSComponentImpl ::
+  // ----------------------------------------------------------------------
+  // Construction, initialization, and destruction 
+  // ----------------------------------------------------------------------
+
+  BME280ComponentImpl ::
 #if FW_OBJECT_NAMES == 1
-    GPSComponentImpl(
+    BME280ComponentImpl(
         const char *const compName
     ) :
-      GPSComponentBase(compName)
+      BME280ComponentBase(compName)
 #else
-    GPSImpl(void)
+    BME280Impl(void)
 #endif
   {
 
   }
 
-  void GPSComponentImpl ::
+  void BME280ComponentImpl ::
     init(
         const NATIVE_INT_TYPE queueDepth,
         const NATIVE_INT_TYPE instance
     ) 
   {
-    GPSComponentBase::init(queueDepth, instance);
+    BME280ComponentBase::init(queueDepth, instance);
   }
 
-  GPSComponentImpl ::
-    ~GPSComponentImpl(void)
+  BME280ComponentImpl ::
+    ~BME280ComponentImpl(void)
   {
 
-  }
-  
-  float GPSComponentImpl ::
-    gps_deg_to_dec(
-        float deg 
-      )
-  {
-    return 0;
   }
 
   // ----------------------------------------------------------------------
   // Handler implementations for user-defined typed input ports
   // ----------------------------------------------------------------------
 
-  void GPSComponentImpl ::
+  void BME280ComponentImpl ::
     schedIn_handler(
         const NATIVE_INT_TYPE portNum,
         NATIVE_UINT_TYPE context
     )
   {
+    
+    tlmWrite_BME_Pressure(964.57);
+    tlmWrite_BME_Humidity(49.62);
+    tlmWrite_BME_Temperature(25.39);
+    tlmWrite_BME_Altitude(411.64);
+    
     return;
   }
 

@@ -60,7 +60,7 @@ Svc::ActiveRateGroupImpl rateGroup3Comp
 ;
 
 // Command Components
-Svc::SocketGndIfImpl sockGndIf
+Svc::LoRaGndIfImpl loraGndIf
 #if FW_OBJECT_NAMES == 1
                     ("SGIF")
 #endif
@@ -250,7 +250,7 @@ void constructApp(int port_number, char* hostname) {
 
     prmDb.init(10,0);
 
-    sockGndIf.init(0);
+    loraGndIf.init(0);
 
     fileUplink.init(30, 0);
     fileDownlink.init(30, 0);
@@ -335,7 +335,7 @@ void constructApp(int port_number, char* hostname) {
     pingRcvr.start(0, 100, 10*1024);
 
     // Initialize socket server
-    sockGndIf.startSocketTask(100, 10*1024, port_number, hostname, Svc::SocketGndIfImpl::SEND_UDP);
+    loraGndIf.startSocketTask(100, 10*1024, port_number, hostname, Svc::LoRaGndIfImpl::SEND_UDP);
     
     BmeImpl.start(0, 99, 10*1024);
     GPSImpl.start(0, 99, 10*1024);

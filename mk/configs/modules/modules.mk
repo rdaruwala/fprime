@@ -48,7 +48,7 @@ SVC_MODULES := \
 	Svc/RateGroupDriver \
 	Svc/Sched \
 	Svc/ComLogger \
-	Svc/SocketGndIf \
+	Svc/LoRaGndIf \
 	Svc/BuffGndSockIf \
 	Svc/TlmChan \
 	Svc/PassiveTextLogger \

@@ -5,19 +5,20 @@
 #include <Os/Task.hpp>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <semaphore.h>
 
 namespace Svc {
 
-    class SocketGndIfImpl : public GndIfComponentBase {
+    class LoRaGndIfImpl : public GndIfComponentBase {
         public:
         
 #if FW_OBJECT_NAMES == 1        
-            SocketGndIfImpl(const char* name);
+            LoRaGndIfImpl(const char* name);
 #else
-            SocketGndIfImpl();
+            LoRaGndIfImpl();
 #endif
             void init(NATIVE_INT_TYPE instance);
-            ~SocketGndIfImpl();
+            ~LoRaGndIfImpl();
 
             enum DownlinkProt {
                 SEND_UDP,
@@ -68,6 +69,9 @@ namespace Svc {
             DownlinkProt m_prot; // is downlink TCP or UDP
 
             bool m_portConfigured;
+            
+            NATIVE_INT_TYPE m_setup;
+            sem_t radio;
     };
 
 }

@@ -1,4 +1,4 @@
-SRC = GPSComponentAi.xml GPSComponentImpl_DEFAULT.cpp
+SRC = GPSComponentAi.xml GPSComponentImplStub.cpp
 
 SRC_RASPIAN = GPSComponentImpl.cpp
 

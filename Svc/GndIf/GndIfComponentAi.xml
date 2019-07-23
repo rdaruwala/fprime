@@ -26,7 +26,7 @@
         <port name="LogText" data_type="Fw::LogText"  kind="output" role="LogTextEvent"    max_number="1">
         </port>
 
-        <port name="downlinkPort" data_type="Fw::Com"  kind="sync_input"    max_number="1">
+        <port name="downlinkPort" data_type="Fw::Com"  kind="guarded_input"    max_number="1">
         </port>
 
         <port name="isConnected" data_type="GetConnected"  kind="sync_input"    max_number="1">
@@ -41,7 +41,7 @@
         <port name="fileDownlinkBufferSendOut" data_type="Fw::BufferSend"  kind="output"    max_number="1">
         </port>
 
-        <port name="fileDownlinkBufferSendIn" data_type="Fw::BufferSend"  kind="sync_input"    max_number="1">
+        <port name="fileDownlinkBufferSendIn" data_type="Fw::BufferSend"  kind="guarded_input"    max_number="1">
         </port>
 
         <port name="fileUplinkBufferGet" data_type="Fw::BufferGet"  kind="output"    max_number="1">
