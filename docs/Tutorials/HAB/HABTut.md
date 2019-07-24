@@ -2365,3 +2365,375 @@ DUMP = $(BUILD_ROOT)/mk/bin/empty.sh
 MUNCH := $(BUILD_ROOT)/mk/bin/empty.sh
 ```
 
+Ground Station C++
+
+```c++
+#include <stdio.h>
+#include <bcm2835.h>
+#include <iostream>
+#include <unistd.h>
+#include <string>
+#include <math.h>
+#include <iostream>
+#include <fstream>
+#include <time.h>
+#include <wiringPi.h>
+#include <math.h>
+#include <pthread.h> 
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <errno.h>
+#include <string.h>
+
+#define PKT_DELIM 0x5A5A5A5A
+
+/* Drivers. If a C driver, append in the extern C section. If C++, include normally */
+#include "RH_RF95.h"
+
+int connectionFd = -1;
+int udpFd = -1;
+int socketFd = -1;
+RH_RF95 rf95(8, 25);
+pthread_t thread; 
+
+int socketWrite(int fd, uint8_t* buf, uint32_t size) {
+		int total=0;
+		while(size > 0) {
+				int bytesWritten = write(fd, (char*)buf, size);
+				if (bytesWritten == -1) {
+					if (errno == EINTR) continue;
+					return (total == 0) ? -1 : total;
+				}
+				buf += bytesWritten;
+				size -= bytesWritten;
+				total += bytesWritten;
+		}
+		return total;
+}
+
+int socketRead(int fd, uint8_t* buf, uint32_t size) {
+		int total=0;
+		while(size > 0) {
+				int bytesRead = read(fd, (char*)buf, size);
+				if (bytesRead == -1) {
+					if (errno == EINTR) continue;
+					return (total == 0) ? -1 : total;
+				}
+				buf += bytesRead;
+				size -= bytesRead;
+				total += bytesRead;
+		}
+		return total;
+}
+
+void *socketReadTask(void* ptr) {
+	
+		(void*) ptr;
+			
+		bool acceptConnections;
+		uint32_t packetDelimiter;
+		// Gotta love VxWorks...
+		uint32_t packetSize;
+		uint32_t packetDesc;
+		uint8_t buf[255];
+		ssize_t bytesRead;
+
+		// cast pointer to component type
+		//LoRaGndIfImpl* comp = (LoRaGndIfImpl*) ptr;
+
+		while (socketFd == -1){
+			usleep(1000000);
+		}
+
+		acceptConnections = true;
+
+		// loop until magic "kill" packet
+		while (acceptConnections) {
+
+				// read packets
+				while (true) {
+						// first, read packet delimiter
+						printf("SocketFd: %i\n", socketFd);
+						bytesRead = socketRead(socketFd,(uint8_t*)&packetDelimiter,sizeof(packetDelimiter));
+						if( -1 == bytesRead ) {
+								printf("Delim read error: %s\n",strerror(errno));
+								break;
+						}
+
+						if(0 == bytesRead) {
+							connectionFd = -1;
+							break;
+						}
+
+						if (bytesRead != sizeof(packetDelimiter)) {
+								printf("Didn't get right pd size: %ld\n",(long int)bytesRead);
+						}
+						// correct for network order
+						packetDelimiter = ntohl(packetDelimiter);
+
+						// if magic number to quit, exit loop
+						if (packetDelimiter == 0xA5A5A5A5) {
+								printf("packetDelimiter = 0x%x\n", packetDelimiter);
+								break;
+						} else if (packetDelimiter != PKT_DELIM) {
+								printf("Unexpected delimiter 0x%08X\n",packetDelimiter);
+								// just keep reading until a delimiter is found
+								continue;
+						}
+						else{
+							printf("Delim got: 0x%08X\n", packetDelimiter);
+						}
+
+						printf("Now doing a read with FD: %i\n", connectionFd);
+						// now read packet size
+						bytesRead = socketRead(connectionFd,(uint8_t*)&packetSize,sizeof(packetSize));
+						if( -1 == bytesRead ) {
+								printf("Size read error: %s",strerror(errno));
+								break;
+						}
+
+						if(0 == bytesRead) {
+							connectionFd = -1;
+							break;
+						}
+
+						if (bytesRead != sizeof(packetSize)) {
+								printf("Didn't get right ps size!\n");
+						}
+
+						// correct for network order
+						packetSize = ntohl(packetSize);
+
+
+						// get packet description
+						bytesRead = socketRead(socketFd,(uint8_t*)&packetDesc,sizeof(packetDesc));
+						packetDesc = ntohl(packetDesc);
+						
+						printf("Desc: %0x%08X\n", packetDesc);
+
+
+						switch(packetDesc) {
+								case 0:
+									{
+										// read cmd packet minus description
+										bytesRead = socketRead(socketFd,(uint8_t*)buf+sizeof(packetDesc),packetSize-sizeof(packetDesc));
+										if (-1 == bytesRead) {
+												printf("Goofed this one up...\n");
+												printf("Size read error: %s\n",strerror(errno));
+												break;
+										}
+
+										if(0 == bytesRead) {
+												connectionFd = -1;
+												break;
+										}
+
+										// Add back description
+										bytesRead = bytesRead + sizeof(packetDesc);
+
+										buf[3] = packetDesc & 0xff;
+										buf[2] = (packetDesc & 0xff00) >> 8;
+										buf[1] = (packetDesc & 0xff0000) >> 16;
+										buf[0] = (packetDesc & 0xff000000) >> 24;
+
+										// check read size
+										if (bytesRead != (ssize_t)packetSize) {
+												printf("Read size mismatch: A: %ld E: %d\n",(long int)bytesRead,packetSize);
+										}
+										
+										printf("Done doing stuff with a command packet\n");
+										
+										uint8_t buf2Send[bytesRead+4];
+										
+										// *0xC header
+										char *header = "*0xC";
+										
+										buf2Send[0] = (uint8_t) header[0];
+										buf2Send[1] = (uint8_t) header[1];
+										buf2Send[2] = (uint8_t) header[2];
+										buf2Send[3] = (uint8_t) header[3];
+										
+										memcpy(buf2Send+4, buf, bytesRead);
+										
+										rf95.send(buf2Send, bytesRead+4);
+										rf95.waitPacketSent();
+										
+										printf("Sent!\n");
+									}
+										break;
+								case 3:
+									{
+									// Get Buffer
+									uint8_t data_ptr[packetSize - sizeof(packetDesc)];
+
+
+									// Read file packet minus description
+									bytesRead = socketRead(socketFd, data_ptr, packetSize - sizeof(packetDesc));
+									if (-1 == bytesRead) {
+										printf("Size read error: %s\n",strerror(errno));
+										break;
+									}
+
+									// for(uint32_t i =0; i < bytesRead; i++){
+									//     DEBUG_PRINT("IN_DATA:%02x\n", data_ptr[i]);
+									// }
+									
+									rf95.send(data_ptr, packetSize - sizeof(packetDesc));
+									rf95.waitPacketSent();
+
+									printf("Done doing file packet handling\n");
+									}
+									break;
+									
+								default:
+									break;
+						}
+
+						
+
+				} // while not done with packets
+				close(socketFd);
+				connectionFd = -1;
+		}
+
+}
+
+/* Main function */
+int main() {
+	
+	// Setup Radio
+	if (!bcm2835_init()) {
+		fprintf( stderr, "%s bcm2835_init() Failed\n\n", __BASEFILE__ );
+		return 1;
+	}
+	
+	printf("bcm init\n");
+	
+	if (!rf95.init()) {
+		fprintf( stderr, "\nRF95 module init failed, Please verify wiring/module\n" );
+		return 1;
+	}
+	
+	// Set maximum power
+	rf95.setTxPower(23, false);
+		
+	// Set frequency
+	rf95.setFrequency(434.12);
+	
+	//rf95.setModemConfig(RH_RF95::Bw500Cr45Sf128);
+	
+	// Set modem config
+	// Premade modem configs: https://www.airspayce.com/mikem/arduino/RadioHead/classRH__RF95.html#ab9605810c11c025758ea91b2813666e3
+	// You can also set parameters yourself
+	
+	printf("Radio init complete\n");
+	
+	printf("Attempting socket connection...\n");
+	
+	char ip[100];
+	int sockAddrSize;
+	strncpy(ip, "192.168.2.1", sizeof(ip));
+	char buf[256];
+	
+	int port = 50000;
+	struct sockaddr_in servaddr; // Internet socket address struct
+	struct sockaddr_in servAddr; // !< UDP server
+	
+	if ((socketFd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+		printf("Socket error: %s\n",strerror(errno));
+		return 1;
+	}
+	
+	//if (SEND_UDP == prot) {
+	if(1){
+
+			udpFd = socket(AF_INET, SOCK_DGRAM, 0);
+			if (-1 == udpFd) {
+					//Was already open
+					close(socketFd);
+					printf("UDP Socket error: %s\n",strerror(errno));
+					return 1;
+			}
+
+			/* fill in the server's address and data */
+			memset((char*)&servAddr, 0, sizeof(servAddr));
+			servAddr.sin_family = AF_INET;
+			servAddr.sin_port = htons(port);
+			inet_aton(ip , &servAddr.sin_addr);
+	}
+	
+	struct timeval timeout;
+	timeout.tv_sec = 1;
+	timeout.tv_usec = 0;
+	// set socket write to timeout after 1 sec
+	if (setsockopt (socketFd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout,
+									sizeof(timeout)) < 0) {
+		printf("setsockopt error: %s\n",strerror(errno));
+	}
+	
+	// Fill in data structure with server information
+	sockAddrSize = sizeof(struct sockaddr_in);
+	memset((char*) &servaddr, 0, sizeof(servaddr)); // set the entire stucture to zero
+	servaddr.sin_family = AF_INET; // set address family to AF_INET (2)
+	servaddr.sin_port = htons(port);
+
+	servaddr.sin_addr.s_addr = inet_addr(ip);
+	if (connect(socketFd, (struct sockaddr *) &servaddr, sockAddrSize) < 0) {
+			//Force connect to close
+			close(udpFd);
+			close(socketFd);
+			socketFd = -1;
+			printf("Unable to connect\n");
+			return 1;
+	}
+	
+	strncpy(buf, "Register FSW\n", sizeof(buf));
+	
+	int tmpBytesWritten = socketWrite(socketFd, (uint8_t*)buf, strnlen(buf, 13));
+	if (tmpBytesWritten < 0) {
+		printf("write error on port %d \n", port);
+		return 1;
+	}
+	
+	connectionFd = socketFd;
+	
+	printf("Connection success! Bytes written: %i on fd: %i\n", tmpBytesWritten, socketFd);
+	
+	pthread_create(&thread, NULL, socketReadTask, NULL);
+	
+	printf("Thread started successfully\n");
+	
+	while(1){
+		
+		
+		// If uplink message is available
+		if(rf95.available()){
+			uint8_t buf2[100];
+			uint8_t len2 = sizeof(buf2);
+
+			if (rf95.recv(buf2, &len2))
+			{
+				printf("Received: %i bytes\n", len2);
+				
+				for(uint32_t i = 0; i < len2; i++){
+					printf("%02x ", buf2[i]);
+				}
+				printf("\n");
+					
+				int bytes_sent = sendto(udpFd,
+								buf2,
+								len2,
+								0,
+								(struct sockaddr *) &servAddr,
+								sizeof(servAddr));
+								
+				printf("Bytes sent: %i with fd: %i\n", bytes_sent, udpFd);
+			}
+		}	
+	}
+	
+}
+```
