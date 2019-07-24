@@ -302,5 +302,11 @@ namespace Svc {
           Os::Task::delay(100);
         }
     }
+    
+    Svc::ConnectionStatus LoRaGndIfImpl::isConnected_handler(NATIVE_INT_TYPE portNum)
+    {
+        return (this->m_connectionFd != -1) ? Svc::SOCKET_CONNECTED :
+                                              Svc::SOCKET_NOT_CONNECTED;
+    }
 
 }

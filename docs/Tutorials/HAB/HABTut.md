@@ -1772,21 +1772,6 @@ namespace Svc {
 	RH_RF95 rf95(8, 25);
 
 		/////////////////////////////////////////////////////////////////////
-		// Helper functions
-		/////////////////////////////////////////////////////////////////////
-		namespace {
-
-				NATIVE_INT_TYPE socketWrite(RH_RF95 rf95, U8* buf, U32 size) {
-						printf("Sending socketWrite...\n");
-						rf95.send(buf, size);
-						rf95.waitPacketSent();
-						printf("Sent socketWrite!\n");
-						return size;
-				}
-				
-		}
-
-		/////////////////////////////////////////////////////////////////////
 		// Class implementation
 		/////////////////////////////////////////////////////////////////////
 
@@ -1988,14 +1973,15 @@ namespace Svc {
 				packet_size += sizeof(desc);
 
 				//Send msg header
-				(void)socketWrite(rf95,(U8*)buf, packet_size);
-				//Send msg
-				(void)socketWrite(rf95,(U8*)fwBuffer.getdata(), buffer_size);
-				//DEBUG_PRINT("PACKET BYTES SENT: %d\n", bytes_sent);
-
-				// for(uint32_t i = 0; i < bytes_sent; i++){
-				//     DEBUG_PRINT("%02x\n",((U8*)fwBuffer.getdata())[i]);
-				// }
+				
+				sem_wait(&this->radio);
+				rf95.send((U8*) buf, packet_size);
+				rf95.waitPacketSent();
+				Os::Task::delay(50);
+				rf95.send((U8*)fwBuffer.getdata(), buffer_size);
+				Os::Task::delay(50);
+				sem_post(&this->radio);
+				
 				this->fileDownlinkBufferSendOut_out(0,fwBuffer);
 
 		}
@@ -2043,6 +2029,12 @@ namespace Svc {
 					sem_post(&this->radio); 
 					Os::Task::delay(100);
 				}
+		}
+		
+		Svc::ConnectionStatus LoRaGndIfImpl::isConnected_handler(NATIVE_INT_TYPE portNum)
+		{
+				return (this->m_connectionFd != -1) ? Svc::SOCKET_CONNECTED :
+																							Svc::SOCKET_NOT_CONNECTED;
 		}
 
 }
