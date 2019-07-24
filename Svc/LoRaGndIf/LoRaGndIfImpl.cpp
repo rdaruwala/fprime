@@ -41,21 +41,7 @@ namespace Svc {
             printf("Sent socketWrite!\n");
             return size;
         }
-
-        NATIVE_INT_TYPE socketRead(NATIVE_INT_TYPE fd, U8* buf, U32 size) {
-            NATIVE_INT_TYPE total=0;
-            while(size > 0) {
-                NATIVE_INT_TYPE bytesRead = read(fd, (char*)buf, size);
-                if (bytesRead == -1) {
-                  if (errno == EINTR) continue;
-                  return (total == 0) ? -1 : total;
-                }
-                buf += bytesRead;
-                size -= bytesRead;
-                total += bytesRead;
-            }
-            return total;
-        }
+        
     }
 
     /////////////////////////////////////////////////////////////////////
@@ -185,6 +171,8 @@ namespace Svc {
 
         // loop until magic "kill" packet
         while (acceptConnections) {
+          
+              sem_wait(&comp->radio);
               if(rf95.available()){
                 uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
                 uint8_t len = sizeof(buf);
@@ -192,7 +180,7 @@ namespace Svc {
                 
                 if (rf95.recv(buf, &len))
                 {
-                  printf("Packet received: %s\n", buf);
+                  printf("PACKET RECEIVED: %s\n", buf);
                   // Check if it's a Command Packet
                   if(!strncmp((char*) buf, "*0xC", 4)){
                     // Do command things
@@ -212,7 +200,14 @@ namespace Svc {
                         comp->fileUplinkBufferSendOut_out(0, packet_buffer);
                     }
                   }
+                  sem_post(&comp->radio);
                 }
+                else{
+                  sem_post(&comp->radio);
+                }
+              }
+              else{
+                sem_post(&comp->radio);
               }
       }
     }
@@ -301,18 +296,8 @@ namespace Svc {
           rf95.waitPacketSent();
           printf("Sent buffer!\n");
           sem_post(&this->radio); 
+          Os::Task::delay(100);
         }
-    }
-
-    void LoRaGndIfImpl::setUseDefaultHeader(bool useDefault)
-    {
-        this->useDefaultHeader = useDefault;
-    }
-
-    Svc::ConnectionStatus LoRaGndIfImpl::isConnected_handler(NATIVE_INT_TYPE portNum)
-    {
-        return (this->m_connectionFd != -1) ? Svc::SOCKET_CONNECTED :
-                                              Svc::SOCKET_NOT_CONNECTED;
     }
 
 }
