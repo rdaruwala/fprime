@@ -201,13 +201,16 @@ namespace Svc {
                     }
                   }
                   sem_post(&comp->radio);
+                  Os::Task::delay(50);
                 }
                 else{
                   sem_post(&comp->radio);
+                  Os::Task::delay(50);
                 }
               }
               else{
                 sem_post(&comp->radio);
+                Os::Task::delay(20);
               }
       }
     }

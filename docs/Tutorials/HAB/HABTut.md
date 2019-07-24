@@ -1733,4 +1733,635 @@ Don't forget to update your `mod.mk` and `modules.mk` files to include your new 
 
 # Check-In
 
-At this point, if you `make RASPIAN` on a Raspberry Pi and run the `Ref/scripts/run_ref.sh` script, you should see telemetry values popping in for both sensors. If you do, everything is working properly! Next, we'll go over the LoRa radio and 
+At this point, if you `make RASPIAN` on a Raspberry Pi and run the `Ref/scripts/run_ref.sh` script, you should see telemetry values popping in for both sensors. If you do, everything is working properly! Next, we'll go over the LoRa radio and set that up to be a Ground Interface.
+
+# LoRa Radio
+
+LoRaGndIf.cpp
+
+```c++
+#include <Svc/LoRaGndIf/LoRaGndIfImpl.hpp>
+#include <Fw/Com/ComPacket.hpp>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <Fw/Types/Assert.hpp>
+#include <Fw/Types/EightyCharString.hpp>
+#include <Os/Task.hpp>
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <bcm2835.h>
+
+#include "LoRaLibs_RasPi/RH_RF95.h"
+
+#define ERROR (-1)
+
+
+//#define DEBUG_PRINT(x,...) printf(x,##__VA_ARGS__); fflush(stdout)
+#define DEBUG_PRINT(x,...)
+
+namespace Svc {
+	
+	// Radio variable
+	RH_RF95 rf95(8, 25);
+
+		/////////////////////////////////////////////////////////////////////
+		// Helper functions
+		/////////////////////////////////////////////////////////////////////
+		namespace {
+
+				NATIVE_INT_TYPE socketWrite(RH_RF95 rf95, U8* buf, U32 size) {
+						printf("Sending socketWrite...\n");
+						rf95.send(buf, size);
+						rf95.waitPacketSent();
+						printf("Sent socketWrite!\n");
+						return size;
+				}
+				
+				NATIVE_INT_TYPE socketRead(NATIVE_INT_TYPE fd, U8* buf, U32 size) {
+						NATIVE_INT_TYPE total=0;
+						while(size > 0) {
+								NATIVE_INT_TYPE bytesRead = read(fd, (char*)buf, size);
+								if (bytesRead == -1) {
+									if (errno == EINTR) continue;
+									return (total == 0) ? -1 : total;
+								}
+								buf += bytesRead;
+								size -= bytesRead;
+								total += bytesRead;
+						}
+						return total;
+				}
+				
+		}
+
+		/////////////////////////////////////////////////////////////////////
+		// Class implementation
+		/////////////////////////////////////////////////////////////////////
+
+#if FW_OBJECT_NAMES == 1    
+		LoRaGndIfImpl::LoRaGndIfImpl(const char* name) : GndIfComponentBase(name)
+#else
+		LoRaGndIfImpl::LoRaGndIfImpl() : GndIfComponentBase()
+#endif
+		,m_socketFd(-1)
+		,m_connectionFd(-1)
+		,m_udpFd(-1)
+		,m_udpConnectionFd(-1)
+		,m_priority(1)
+		,m_stackSize(1024)
+		,port_number(0)
+		,hostname(NULL)
+		,m_cpuAffinity(-1)
+		,useDefaultHeader(true)
+		,m_prot(SEND_UDP)
+		,m_portConfigured(false)
+		,m_setup(0)
+		{
+		}
+
+		void LoRaGndIfImpl::init(NATIVE_INT_TYPE instance) {
+				GndIfComponentBase::init(instance);
+		}
+		
+		LoRaGndIfImpl::~LoRaGndIfImpl() {
+		}
+
+		void LoRaGndIfImpl ::
+				GNDIF_ENABLE_INTERFACE_cmdHandler(
+						const FwOpcodeType opCode,
+						const U32 cmdSeq
+				)
+		{
+				if (m_portConfigured) {
+
+						this->startSocketTask(this->m_priority,
+																	this->m_stackSize,
+																	this->port_number,
+																	this->hostname,
+																	this->m_prot,
+																	this->m_cpuAffinity);
+
+						this->cmdResponse_out(opCode, cmdSeq, Fw::COMMAND_OK);
+				} else {
+						this->cmdResponse_out(opCode, cmdSeq, Fw::COMMAND_EXECUTION_ERROR);
+				}
+		}
+
+		void LoRaGndIfImpl ::
+				setSocketTaskProperties(I32 priority, NATIVE_INT_TYPE stackSize, U32 portNumber, char* hostname, DownlinkProt prot, NATIVE_INT_TYPE cpuAffinity)
+		{
+
+				this->m_priority = priority;
+				this->m_stackSize = stackSize;
+				this->port_number = portNumber;
+				this->hostname = hostname;
+				this->m_prot = prot;
+				this->m_cpuAffinity = cpuAffinity;
+
+				this->m_portConfigured = true;
+		}
+
+		void LoRaGndIfImpl::startSocketTask(I32 priority, NATIVE_INT_TYPE stackSize, U32 port_number, char* hostname,  DownlinkProt prot, NATIVE_INT_TYPE cpuAffinity) {
+				Fw::EightyCharString name("ScktRead");
+				this->port_number = port_number;
+				this->hostname = hostname;
+				
+				
+				
+				if (!bcm2835_init()) {
+					printf(" bcm2835_init() Failed\n\n" );
+				}
+				
+				printf("bcm init\n");
+				
+				if (!rf95.init()) {
+					printf("\nRF95 module init failed, Please verify wiring/module\n" );
+				}
+				
+				// Set maximum power
+				rf95.setTxPower(23, false);
+					
+				// Set frequency
+				rf95.setFrequency(434.12);
+				
+				//rf95.setModemConfig(RH_RF95::Bw500Cr45Sf128);
+				
+				sem_init(&this->radio, 0, 1);
+				
+				printf("Setup complete!\n");
+				
+				this->m_setup = 1;
+
+				Os::Task::TaskStatus stat = this->socketTask.start(name,0,priority,stackSize,LoRaGndIfImpl::socketReadTask, (void*) this, cpuAffinity);
+				FW_ASSERT(Os::Task::TASK_OK == stat,static_cast<NATIVE_INT_TYPE>(stat));
+
+		}
+		
+		void LoRaGndIfImpl::socketReadTask(void* ptr) {
+				FW_ASSERT(ptr);
+				bool acceptConnections;
+				uint32_t packetDelimiter;
+				// Gotta love VxWorks...
+				uint32_t packetSize;
+				uint32_t packetDesc;
+				U8 buf[FW_COM_BUFFER_MAX_SIZE];
+				char buf2[256];
+				ssize_t bytesRead;
+				
+				int connectionFd = -1;
+				int udpFd = -1;
+				int socketFd = -1;
+				
+				char ip[100];
+				int sockAddrSize;
+				strncpy(ip, "192.168.2.1", sizeof(ip));
+				
+				int port = 50000;
+					struct sockaddr_in servaddr; // Internet socket address struct
+					struct sockaddr_in servAddr; // !< UDP server
+					
+					if ((socketFd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+						printf("Socket error: %s\n",strerror(errno));
+						return;
+					}
+					
+					//if (SEND_UDP == prot) {
+					if(1){
+
+							udpFd = socket(AF_INET, SOCK_DGRAM, 0);
+							if (-1 == udpFd) {
+									//Was already open
+									close(socketFd);
+									printf("UDP Socket error: %s\n",strerror(errno));
+									return;
+							}
+
+							/* fill in the server's address and data */
+							memset((char*)&servAddr, 0, sizeof(servAddr));
+							servAddr.sin_family = AF_INET;
+							servAddr.sin_port = htons(port);
+							inet_aton(ip , &servAddr.sin_addr);
+					}
+					
+					struct timeval timeout;
+					timeout.tv_sec = 1;
+					timeout.tv_usec = 0;
+					// set socket write to timeout after 1 sec
+					if (setsockopt (socketFd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout,
+													sizeof(timeout)) < 0) {
+						printf("setsockopt error: %s\n",strerror(errno));
+					}
+					
+					// Fill in data structure with server information
+					sockAddrSize = sizeof(struct sockaddr_in);
+					memset((char*) &servaddr, 0, sizeof(servaddr)); // set the entire stucture to zero
+					servaddr.sin_family = AF_INET; // set address family to AF_INET (2)
+					servaddr.sin_port = htons(port);
+
+					servaddr.sin_addr.s_addr = inet_addr(ip);
+					if (connect(socketFd, (struct sockaddr *) &servaddr, sockAddrSize) < 0) {
+							//Force connect to close
+							close(udpFd);
+							close(socketFd);
+							socketFd = -1;
+							printf("Unable to connect\n");
+							return;
+					}
+					
+					strncpy(buf2, "Register FSW\n", sizeof(buf2));
+						
+						int tmpBytesWritten = socketWrite(socketFd, (uint8_t*)buf2, strnlen(buf2, 13));
+						if (tmpBytesWritten < 0) {
+							printf("write error on port %d \n", port);
+							return;
+						}
+					
+					connectionFd = socketFd;
+
+				// cast pointer to component type
+				LoRaGndIfImpl* comp = (LoRaGndIfImpl*) ptr;
+
+
+				acceptConnections = true;
+
+				// loop until magic "kill" packet
+				while (acceptConnections) {
+					
+							// first, read packet delimiter
+							printf("Socket fd: %i \n", socketFd);
+							bytesRead = socketRead(socketFd,(U8*)&packetDelimiter,sizeof(packetDelimiter));
+							printf("DONE WITH THE READING BTW\n");
+							if( -1 == bytesRead ) {
+									DEBUG_PRINT("Delim read error: %s",strerror(errno));
+									break;
+							}
+
+							if(0 == bytesRead) {
+								connectionFd = -1;
+								break;
+							}
+
+							if (bytesRead != sizeof(packetDelimiter)) {
+									DEBUG_PRINT("Didn't get right pd size: %ld\n",(long int)bytesRead);
+							}
+							// correct for network order
+							packetDelimiter = ntohl(packetDelimiter);
+
+							// if magic number to quit, exit loop
+							if (packetDelimiter == 0xA5A5A5A5) {
+									DEBUG_PRINT("packetDelimiter = 0x%x\n", packetDelimiter);
+									break;
+							} else if (packetDelimiter != LoRaGndIfImpl::PKT_DELIM) {
+									DEBUG_PRINT("Unexpected delimiter 0x%08X\n",packetDelimiter);
+									// just keep reading until a delimiter is found
+									continue;
+							}
+
+							// now read packet size
+							bytesRead = socketRead(connectionFd,(U8*)&packetSize,sizeof(packetSize));
+							if( -1 == bytesRead ) {
+									DEBUG_PRINT("Size read error: %s",strerror(errno));
+									break;
+							}
+
+							if(0 == bytesRead) {
+								connectionFd = -1;
+								break;
+							}
+
+							if (bytesRead != sizeof(packetSize)) {
+									DEBUG_PRINT("Didn't get right ps size!\n");
+							}
+
+							// correct for network order
+							packetSize = ntohl(packetSize);
+
+
+							// get packet description
+							bytesRead = socketRead(socketFd,(U8*)&packetDesc,sizeof(packetDesc));
+							packetDesc = ntohl(packetDesc);
+
+
+							switch(packetDesc) {
+									case Fw::ComPacket::FW_PACKET_COMMAND:
+											
+											// check size of command
+											if (packetSize > FW_COM_BUFFER_MAX_SIZE) {
+			//comp->log_WARNING_HI_GNDIF_ReceiveError(GNDIF_PacketTooBig, comp->port_number);
+													DEBUG_PRINT("Packet to large! :%d\n",packetSize);
+													// might as well wait for the next packet
+													break;
+											}
+
+											// read cmd packet minus description
+											bytesRead = socketRead(socketFd,(U8*)buf+sizeof(packetDesc),packetSize-sizeof(packetDesc));
+											if (-1 == bytesRead) {
+			//comp->log_WARNING_HI_GNDIF_ReceiveError(GNDIF_PacketReadError, comp->port_number);
+													DEBUG_PRINT("Size read error: %s\n",strerror(errno));
+													break;
+											}
+
+											if(0 == bytesRead) {
+													connectionFd = -1;
+													break;
+											}
+
+											// Add back description
+											bytesRead = bytesRead + sizeof(packetDesc);
+
+											buf[3] = packetDesc & 0xff;
+											buf[2] = (packetDesc & 0xff00) >> 8;
+											buf[1] = (packetDesc & 0xff0000) >> 16;
+											buf[0] = (packetDesc & 0xff000000) >> 24;
+
+											// check read size
+											if (bytesRead != (ssize_t)packetSize) {
+			//comp->log_WARNING_HI_GNDIF_ReceiveError(GNDIF_ReadSizeMismatch, comp->port_number);
+													DEBUG_PRINT("Read size mismatch: A: %ld E: %d\n",(long int)bytesRead,packetSize);
+											}
+
+
+											if (comp->isConnected_uplinkPort_OutputPort(0)) {
+													 Fw::ComBuffer cmdBuffer(buf, bytesRead);
+													 comp->uplinkPort_out(0,cmdBuffer,0);
+											}
+											break;
+
+									case Fw::ComPacket::FW_PACKET_FILE:
+									{   
+											
+											// Get Buffer
+											Fw::Buffer packet_buffer = comp->fileUplinkBufferGet_out(0, packetSize - sizeof(packetDesc));
+											U8* data_ptr = (U8*)packet_buffer.getdata();
+
+
+											// Read file packet minus description
+											bytesRead = socketRead(socketFd, data_ptr, packetSize - sizeof(packetDesc));
+											if (-1 == bytesRead) {
+			//comp->log_WARNING_HI_GNDIF_ReceiveError(GNDIF_PacketReadError, comp->port_number);
+													DEBUG_PRINT("Size read error: %s\n",strerror(errno));
+													break;
+											}
+
+											// for(uint32_t i =0; i < bytesRead; i++){
+											//     DEBUG_PRINT("IN_DATA:%02x\n", data_ptr[i]);
+											// }
+
+											if (comp->isConnected_fileUplinkBufferSendOut_OutputPort(0)) {
+													comp->fileUplinkBufferSendOut_out(0, packet_buffer);
+											}
+
+									}
+											break;
+									default:
+											FW_ASSERT(0);
+							}
+			}
+		}
+
+
+		void LoRaGndIfImpl::fileDownlinkBufferSendIn_handler(
+				NATIVE_INT_TYPE portNum, /*!< The port number*/
+				Fw::Buffer &fwBuffer
+		) {
+
+				char buf[256];
+				U32 header_size = this->useDefaultHeader ? 9 : sizeof(LoRaGndIfImpl::PKT_DELIM);
+				U32 desc        = 3; // File Desc
+				U32 packet_size = 0;
+				U32 buffer_size = fwBuffer.getsize();
+				U32 net_buffer_size = htonl(buffer_size+4);
+
+				//Write message header
+				if (this->useDefaultHeader) {
+						strncpy(buf, "A5A5 GUI ", sizeof(buf));
+				}
+				else {
+						U32 data = LoRaGndIfImpl::PKT_DELIM;
+						memcpy(buf, (U8*)&data, header_size);
+				}
+				packet_size += header_size;
+
+				memmove(buf + packet_size, &net_buffer_size, sizeof(net_buffer_size));
+				packet_size += sizeof(buffer_size);
+
+				desc = htonl(desc);
+				memmove(buf + packet_size, &desc, sizeof(desc));
+				packet_size += sizeof(desc);
+
+				//Send msg header
+				(void)socketWrite(rf95,(U8*)buf, packet_size);
+				//Send msg
+				(void)socketWrite(rf95,(U8*)fwBuffer.getdata(), buffer_size);
+				//DEBUG_PRINT("PACKET BYTES SENT: %d\n", bytes_sent);
+
+				// for(uint32_t i = 0; i < bytes_sent; i++){
+				//     DEBUG_PRINT("%02x\n",((U8*)fwBuffer.getdata())[i]);
+				// }
+				this->fileDownlinkBufferSendOut_out(0,fwBuffer);
+
+		}
+
+
+		void LoRaGndIfImpl::downlinkPort_handler(NATIVE_INT_TYPE portNum, Fw::ComBuffer &data, U32 context) {
+				char buf[256];
+				U32 header_size;
+				U32 data_size;
+				I32 data_net_size;
+				I32 bytes_sent;
+
+				//this is the size of "A5A5 GUI "
+				header_size = this->useDefaultHeader ? 9 : sizeof(LoRaGndIfImpl::PKT_DELIM);
+				data_size = data.getBuffLength();
+				data_net_size = htonl(data.getBuffLength());
+				// check to see if someone is connected
+				//DEBUG_PRINT("Trying to send %ld bytes to ground.\n",data.getBuffLength() + header_size + sizeof(data_size));
+				if (this->useDefaultHeader) {
+						strncpy(buf, "A5A5 GUI ", sizeof(buf));
+				}
+				else {
+						U32 data = LoRaGndIfImpl::PKT_DELIM;
+						memcpy(buf, (U8*)&data, header_size);
+				}
+				
+				memmove(buf + header_size, &data_net_size, sizeof(data_net_size));
+				memmove(buf + header_size + sizeof(data_size), (char *)data.getBuffAddr(), data_size);
+								
+				if(this->m_setup){
+					
+					uint8_t data2Send[256];
+					int size = header_size + data_size + sizeof(data_size);
+					for(uint i = 0; i < size; i++){
+						data2Send[i] = (uint8_t) buf[i];
+						printf("%02x ", data2Send[i]);
+					}
+					printf("\n");
+					
+					sem_wait(&this->radio); 
+					printf("Sending buf, size: %i...\n", size);
+					rf95.send(data2Send, size);
+					rf95.waitPacketSent();
+					printf("Sent buffer!\n");
+					sem_post(&this->radio); 
+					Os::Task::delay(100);
+				}
+		}
+		
+		Svc::ConnectionStatus LoRaGndIfImpl::isConnected_handler(NATIVE_INT_TYPE portNum)
+		{
+				return (this->m_connectionFd != -1) ? Svc::SOCKET_CONNECTED :
+																							Svc::SOCKET_NOT_CONNECTED;
+		}
+
+}
+```
+
+LoRaGndIf.hpp
+
+```c++
+#ifndef SVC_CMD_SOCKET_PROVIDER_IMPL_HPP
+#define SVC_CMD_SOCKET_PROVIDER_IMPL_HPP
+
+#include <Svc/GndIf/GndIfComponentAc.hpp>
+#include <Os/Task.hpp>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <semaphore.h>
+
+namespace Svc {
+
+	class LoRaGndIfImpl : public GndIfComponentBase {
+		public:
+		
+#if FW_OBJECT_NAMES == 1        
+			LoRaGndIfImpl(const char* name);
+#else
+			LoRaGndIfImpl();
+#endif
+			void init(NATIVE_INT_TYPE instance);
+			~LoRaGndIfImpl();
+
+			enum DownlinkProt {
+				SEND_UDP,
+				SEND_TCP
+			};
+
+			void setSocketTaskProperties(I32 priority, NATIVE_INT_TYPE stackSize, U32 portNumber, char* hostname, DownlinkProt prot = SEND_UDP, NATIVE_INT_TYPE cpuAffinity = -1);
+
+			void startSocketTask(NATIVE_INT_TYPE priority, NATIVE_INT_TYPE stackSize, U32 port_number, char* hostname,  DownlinkProt prot = SEND_UDP, NATIVE_INT_TYPE cpuAffinity = -1);
+			void setUseDefaultHeader(bool useDefault);
+		private:
+
+			void openSocket(NATIVE_INT_TYPE port, DownlinkProt prot = SEND_UDP);
+
+			static const U32 PKT_DELIM = 0x5A5A5A5A;
+
+			//! Handler for input port fileDownlinkBufferSendIn
+			//
+			void fileDownlinkBufferSendIn_handler(
+				NATIVE_INT_TYPE portNum, /*!< The port number*/
+				Fw::Buffer &fwBuffer
+			);
+
+			//! Implementation for GNDIF_ENABLE_INTERFACE command handler
+			//! Enable the interface for ground communications
+			void GNDIF_ENABLE_INTERFACE_cmdHandler(
+				const FwOpcodeType opCode, /*!< The opcode*/
+				const U32 cmdSeq /*!< The command sequence number*/
+			);
+
+			static void socketReadTask(void* ptr);
+			void downlinkPort_handler(NATIVE_INT_TYPE portNum, Fw::ComBuffer &data, U32 context);
+			Svc::ConnectionStatus isConnected_handler(NATIVE_INT_TYPE portNum);
+
+			NATIVE_INT_TYPE m_socketFd; // !< socket file descriptor
+			NATIVE_INT_TYPE m_connectionFd; // !< connection file descriptor
+			NATIVE_INT_TYPE m_udpFd; // !< udp socket if used
+			NATIVE_INT_TYPE m_udpConnectionFd; // !< connection file descriptor
+			struct sockaddr_in m_servAddr; // !< UDP server
+
+			I32 m_priority;
+			NATIVE_INT_TYPE m_stackSize;
+			U32 port_number;
+			char* hostname;
+			NATIVE_INT_TYPE m_cpuAffinity;
+			Os::Task socketTask;
+			bool useDefaultHeader; // Use the default header for downlink, ie "A5A5 GUI "
+			DownlinkProt m_prot; // is downlink TCP or UDP
+
+			bool m_portConfigured;
+			
+			NATIVE_INT_TYPE m_setup;
+			sem_t radio;
+	};
+
+}
+
+#endif
+```
+
+raspian_gnu_common.mk
+
+```make
+include $(BUILD_ROOT)/mk/configs/compiler/include_common.mk
+include $(BUILD_ROOT)/mk/configs/compiler/defines_common.mk
+include $(BUILD_ROOT)/mk/configs/compiler/linux_common.mk
+include $(BUILD_ROOT)/mk/configs/compiler/gnu-common.mk
+
+CC :=  $(PI_TOOLS)/tools/arm-bcm2708/arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc
+CXX := $(PI_TOOLS)/tools/arm-bcm2708/arm-linux-gnueabihf/bin/arm-linux-gnueabihf-g++
+GCOV := $(PI_TOOLS)/tools/arm-bcm2708/arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcov
+AR := $(PI_TOOLS)/tools/arm-bcm2708/arm-linux-gnueabihf/bin/arm-linux-gnueabihf-ar
+
+BUILD_32BIT := -m32
+
+CC_MUNCH := $(BUILD_ROOT)/mk/bin/empty.sh
+
+LINK_LIB := $(AR)
+LINK_LIB_FLAGS := rcs
+LIBRARY_TO := 
+POST_LINK_LIB := $(PI_TOOLS)/tools/arm-bcm2708/arm-linux-gnueabihf/bin/arm-linux-gnueabihf-ranlib
+
+LINK_BIN := $(CXX)
+LINK_BIN_FLAGS := -z muldefs $(LIBS) #$(BUILD_32BIT)
+
+FILE_SIZE := $(LS) $(LS_SIZE)
+LOAD_SIZE := $(SIZE)
+
+
+
+LINK_LIBS := -ldl -lpthread -lm -lrt -lutil -lbcm2835
+
+OPT_SPEED := -Os
+DEBUG := -g3
+
+LORA_RASPI_FLAGS := -DRASPBERRY_PI -DBCM2835_NO_DELAY_COMPATIBILITY
+
+LINUX_GNU_CFLAGS := $(LINUX_FLAGS_COMMON) \
+					$(COMMON_DEFINES) \
+					$(GNU_CFLAGS_COMMON) \
+					$(LORA_RASPI_FLAGS) \
+					#$(BUILD_32BIT) # Quantum framework won't build 32-bit
+
+LINUX_GNU_CXXFLAGS :=	$(LINUX_FLAGS_COMMON) \
+						$(COMMON_DEFINES) \
+						$(GNU_CXXFLAGS_COMMON) \
+						$(LORA_RASPI_FLAGS) \
+						#$(BUILD_32BIT)
+
+COVERAGE := -fprofile-arcs -ftest-coverage
+
+LINUX_GNU_INCLUDES := $(LINUX_INCLUDES_COMMON) $(COMMON_INCLUDES)
+
+DUMP = $(BUILD_ROOT)/mk/bin/empty.sh
+
+MUNCH := $(BUILD_ROOT)/mk/bin/empty.sh
+```
+
