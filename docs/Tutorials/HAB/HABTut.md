@@ -1784,21 +1784,6 @@ namespace Svc {
 						return size;
 				}
 				
-				NATIVE_INT_TYPE socketRead(NATIVE_INT_TYPE fd, U8* buf, U32 size) {
-						NATIVE_INT_TYPE total=0;
-						while(size > 0) {
-								NATIVE_INT_TYPE bytesRead = read(fd, (char*)buf, size);
-								if (bytesRead == -1) {
-									if (errno == EINTR) continue;
-									return (total == 0) ? -1 : total;
-								}
-								buf += bytesRead;
-								size -= bytesRead;
-								total += bytesRead;
-						}
-						return total;
-				}
-				
 		}
 
 		/////////////////////////////////////////////////////////////////////
@@ -1899,9 +1884,15 @@ namespace Svc {
 				
 				this->m_setup = 1;
 
-				Os::Task::TaskStatus stat = this->socketTask.start(name,0,priority,stackSize,LoRaGndIfImpl::socketReadTask, (void*) this, cpuAffinity);
-				FW_ASSERT(Os::Task::TASK_OK == stat,static_cast<NATIVE_INT_TYPE>(stat));
+				if (this->port_number == 0){
+					return;
+				}
+				else {
 
+								// Spawn read task:
+					Os::Task::TaskStatus stat = this->socketTask.start(name,0,priority,stackSize,LoRaGndIfImpl::socketReadTask, (void*) this, cpuAffinity);
+					FW_ASSERT(Os::Task::TASK_OK == stat,static_cast<NATIVE_INT_TYPE>(stat));
+				}
 		}
 		
 		void LoRaGndIfImpl::socketReadTask(void* ptr) {
@@ -1912,78 +1903,7 @@ namespace Svc {
 				uint32_t packetSize;
 				uint32_t packetDesc;
 				U8 buf[FW_COM_BUFFER_MAX_SIZE];
-				char buf2[256];
 				ssize_t bytesRead;
-				
-				int connectionFd = -1;
-				int udpFd = -1;
-				int socketFd = -1;
-				
-				char ip[100];
-				int sockAddrSize;
-				strncpy(ip, "192.168.2.1", sizeof(ip));
-				
-				int port = 50000;
-					struct sockaddr_in servaddr; // Internet socket address struct
-					struct sockaddr_in servAddr; // !< UDP server
-					
-					if ((socketFd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-						printf("Socket error: %s\n",strerror(errno));
-						return;
-					}
-					
-					//if (SEND_UDP == prot) {
-					if(1){
-
-							udpFd = socket(AF_INET, SOCK_DGRAM, 0);
-							if (-1 == udpFd) {
-									//Was already open
-									close(socketFd);
-									printf("UDP Socket error: %s\n",strerror(errno));
-									return;
-							}
-
-							/* fill in the server's address and data */
-							memset((char*)&servAddr, 0, sizeof(servAddr));
-							servAddr.sin_family = AF_INET;
-							servAddr.sin_port = htons(port);
-							inet_aton(ip , &servAddr.sin_addr);
-					}
-					
-					struct timeval timeout;
-					timeout.tv_sec = 1;
-					timeout.tv_usec = 0;
-					// set socket write to timeout after 1 sec
-					if (setsockopt (socketFd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout,
-													sizeof(timeout)) < 0) {
-						printf("setsockopt error: %s\n",strerror(errno));
-					}
-					
-					// Fill in data structure with server information
-					sockAddrSize = sizeof(struct sockaddr_in);
-					memset((char*) &servaddr, 0, sizeof(servaddr)); // set the entire stucture to zero
-					servaddr.sin_family = AF_INET; // set address family to AF_INET (2)
-					servaddr.sin_port = htons(port);
-
-					servaddr.sin_addr.s_addr = inet_addr(ip);
-					if (connect(socketFd, (struct sockaddr *) &servaddr, sockAddrSize) < 0) {
-							//Force connect to close
-							close(udpFd);
-							close(socketFd);
-							socketFd = -1;
-							printf("Unable to connect\n");
-							return;
-					}
-					
-					strncpy(buf2, "Register FSW\n", sizeof(buf2));
-						
-						int tmpBytesWritten = socketWrite(socketFd, (uint8_t*)buf2, strnlen(buf2, 13));
-						if (tmpBytesWritten < 0) {
-							printf("write error on port %d \n", port);
-							return;
-						}
-					
-					connectionFd = socketFd;
 
 				// cast pointer to component type
 				LoRaGndIfImpl* comp = (LoRaGndIfImpl*) ptr;
@@ -1994,134 +1914,45 @@ namespace Svc {
 				// loop until magic "kill" packet
 				while (acceptConnections) {
 					
-							// first, read packet delimiter
-							printf("Socket fd: %i \n", socketFd);
-							bytesRead = socketRead(socketFd,(U8*)&packetDelimiter,sizeof(packetDelimiter));
-							printf("DONE WITH THE READING BTW\n");
-							if( -1 == bytesRead ) {
-									DEBUG_PRINT("Delim read error: %s",strerror(errno));
-									break;
-							}
-
-							if(0 == bytesRead) {
-								connectionFd = -1;
-								break;
-							}
-
-							if (bytesRead != sizeof(packetDelimiter)) {
-									DEBUG_PRINT("Didn't get right pd size: %ld\n",(long int)bytesRead);
-							}
-							// correct for network order
-							packetDelimiter = ntohl(packetDelimiter);
-
-							// if magic number to quit, exit loop
-							if (packetDelimiter == 0xA5A5A5A5) {
-									DEBUG_PRINT("packetDelimiter = 0x%x\n", packetDelimiter);
-									break;
-							} else if (packetDelimiter != LoRaGndIfImpl::PKT_DELIM) {
-									DEBUG_PRINT("Unexpected delimiter 0x%08X\n",packetDelimiter);
-									// just keep reading until a delimiter is found
-									continue;
-							}
-
-							// now read packet size
-							bytesRead = socketRead(connectionFd,(U8*)&packetSize,sizeof(packetSize));
-							if( -1 == bytesRead ) {
-									DEBUG_PRINT("Size read error: %s",strerror(errno));
-									break;
-							}
-
-							if(0 == bytesRead) {
-								connectionFd = -1;
-								break;
-							}
-
-							if (bytesRead != sizeof(packetSize)) {
-									DEBUG_PRINT("Didn't get right ps size!\n");
-							}
-
-							// correct for network order
-							packetSize = ntohl(packetSize);
-
-
-							// get packet description
-							bytesRead = socketRead(socketFd,(U8*)&packetDesc,sizeof(packetDesc));
-							packetDesc = ntohl(packetDesc);
-
-
-							switch(packetDesc) {
-									case Fw::ComPacket::FW_PACKET_COMMAND:
-											
-											// check size of command
-											if (packetSize > FW_COM_BUFFER_MAX_SIZE) {
-			//comp->log_WARNING_HI_GNDIF_ReceiveError(GNDIF_PacketTooBig, comp->port_number);
-													DEBUG_PRINT("Packet to large! :%d\n",packetSize);
-													// might as well wait for the next packet
-													break;
-											}
-
-											// read cmd packet minus description
-											bytesRead = socketRead(socketFd,(U8*)buf+sizeof(packetDesc),packetSize-sizeof(packetDesc));
-											if (-1 == bytesRead) {
-			//comp->log_WARNING_HI_GNDIF_ReceiveError(GNDIF_PacketReadError, comp->port_number);
-													DEBUG_PRINT("Size read error: %s\n",strerror(errno));
-													break;
-											}
-
-											if(0 == bytesRead) {
-													connectionFd = -1;
-													break;
-											}
-
-											// Add back description
-											bytesRead = bytesRead + sizeof(packetDesc);
-
-											buf[3] = packetDesc & 0xff;
-											buf[2] = (packetDesc & 0xff00) >> 8;
-											buf[1] = (packetDesc & 0xff0000) >> 16;
-											buf[0] = (packetDesc & 0xff000000) >> 24;
-
-											// check read size
-											if (bytesRead != (ssize_t)packetSize) {
-			//comp->log_WARNING_HI_GNDIF_ReceiveError(GNDIF_ReadSizeMismatch, comp->port_number);
-													DEBUG_PRINT("Read size mismatch: A: %ld E: %d\n",(long int)bytesRead,packetSize);
-											}
-
-
-											if (comp->isConnected_uplinkPort_OutputPort(0)) {
-													 Fw::ComBuffer cmdBuffer(buf, bytesRead);
-													 comp->uplinkPort_out(0,cmdBuffer,0);
-											}
-											break;
-
-									case Fw::ComPacket::FW_PACKET_FILE:
-									{   
-											
-											// Get Buffer
-											Fw::Buffer packet_buffer = comp->fileUplinkBufferGet_out(0, packetSize - sizeof(packetDesc));
-											U8* data_ptr = (U8*)packet_buffer.getdata();
-
-
-											// Read file packet minus description
-											bytesRead = socketRead(socketFd, data_ptr, packetSize - sizeof(packetDesc));
-											if (-1 == bytesRead) {
-			//comp->log_WARNING_HI_GNDIF_ReceiveError(GNDIF_PacketReadError, comp->port_number);
-													DEBUG_PRINT("Size read error: %s\n",strerror(errno));
-													break;
-											}
-
-											// for(uint32_t i =0; i < bytesRead; i++){
-											//     DEBUG_PRINT("IN_DATA:%02x\n", data_ptr[i]);
-											// }
-
-											if (comp->isConnected_fileUplinkBufferSendOut_OutputPort(0)) {
-													comp->fileUplinkBufferSendOut_out(0, packet_buffer);
-											}
-
+							sem_wait(&comp->radio);
+							if(rf95.available()){
+								uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+								uint8_t len = sizeof(buf);
+								
+								
+								if (rf95.recv(buf, &len))
+								{
+									printf("PACKET RECEIVED: %s\n", buf);
+									// Check if it's a Command Packet
+									if(!strncmp((char*) buf, "*0xC", 4)){
+										// Do command things
+										if (comp->isConnected_uplinkPort_OutputPort(0)) {
+												 Fw::ComBuffer cmdBuffer(buf+4, strlen((char*) buf+4));
+												 comp->uplinkPort_out(0,cmdBuffer,0);
+										}
 									}
-											break;
-									default:
-											FW_ASSERT(0);
+									else if(!strncmp((char*) buf, "*0xF", 4)){
+										// Do file things
+										Fw::Buffer packet_buffer = comp->fileUplinkBufferGet_out(0, packetSize);
+										U8* data_ptr = (U8*)packet_buffer.getdata();
+										
+										memcpy(data_ptr, buf+4, strlen((char*)buf+4));
+										
+										if (comp->isConnected_fileUplinkBufferSendOut_OutputPort(0)) {
+												comp->fileUplinkBufferSendOut_out(0, packet_buffer);
+										}
+									}
+									sem_post(&comp->radio);
+									Os::Task::delay(50);
+								}
+								else{
+									sem_post(&comp->radio);
+									Os::Task::delay(50);
+								}
+							}
+							else{
+								sem_post(&comp->radio);
+								Os::Task::delay(20);
 							}
 			}
 		}
@@ -2212,12 +2043,6 @@ namespace Svc {
 					sem_post(&this->radio); 
 					Os::Task::delay(100);
 				}
-		}
-		
-		Svc::ConnectionStatus LoRaGndIfImpl::isConnected_handler(NATIVE_INT_TYPE portNum)
-		{
-				return (this->m_connectionFd != -1) ? Svc::SOCKET_CONNECTED :
-																							Svc::SOCKET_NOT_CONNECTED;
 		}
 
 }
